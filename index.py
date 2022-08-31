@@ -91,7 +91,7 @@ def ADBRun():
         for package_name in remove_list:
             package_name = package_name.strip('\n')
             remove_result = os.popen(f'adb shell pm uninstall --user 0 {package_name}').read()
-            if remove_result == 'Success\n':
+            if 'Success' in remove_result:
                 MessageLog(f"[성공] {package_name}(이)가 디바이스에서 제거되었습니다.\n")
             else:
                 MessageLog(f"[실패] {package_name}(이)가 디바이스에서 제거되지 않았습니다. - {remove_result}")
