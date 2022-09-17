@@ -12,5 +12,5 @@ I'm not responsible for any problems caused after uninstall system app.
 1. Download lastest file at this repository's releases section.
 2. Extract downloaded file.
 3. Open 'rmAutoApp.exe' via 'User Account Control(UAC)'.
-4. Follow displayed instructure in the program.
+4. Follow displayed instructures in the program.
 ```
