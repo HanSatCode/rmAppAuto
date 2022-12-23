@@ -1,2 +1,7 @@
-/platform-tools
 /.idea
+/platform-tools
+/sample
+/release
+/dist
+/icon
+*.spec
