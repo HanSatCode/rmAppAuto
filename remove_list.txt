@@ -1,3 +1,0 @@
-lg.uplusbox
-com.lguplus.mobile.cs
-com.uplus.onphone
