@@ -6,6 +6,7 @@ import zipfile
 import tkinter
 import tkinter.ttk
 import tkinter.messagebox
+import threading
 from tkinter import *
 from datetime import datetime
 
@@ -32,7 +33,7 @@ def MessageBox(title, description, type="info"):
         return tkinter.messagebox.showinfo(title, description)
 
 
-# Core ================================================================================================================
+# Function - Core =====================================================================================================
 def ADBFileDownloader():
     adb_download = requests.get("https://dl.google.com/android/repository/platform-tools-latest-windows.zip?hl=ko",
                                 allow_redirects=True)
@@ -126,11 +127,15 @@ def ADBListReader():
 
 def ADBRun():
     global log  # 로그 열기 (지역 변수화)로 인한 글로벌 처리
+    global progress_value
+    global progress_bar
+
+    i = 0
 
     if not os.path.isfile(abs_path + "/remove_list.txt"):
         rm_list = open("remove_list.txt", 'w')
         rm_list.close()
-    warning_msg = MessageBox("작업 경고", "일부 시스템 앱을 삭제할 경우, 치명적인 문제가 발생할 수 있습니다.\n계속하시겠습니까?", "askyesno")
+    warning_msg = MessageBox("작업 경고", "시스템 앱을 삭제할 경우, 치명적인 문제가 발생할 수 있습니다.\n계속하시겠습니까?", "askyesno")
 
     if warning_msg == 0:
         MessageLog("[정보] 사용자가 작업을 중단하였습니다.\n")
@@ -142,8 +147,15 @@ def ADBRun():
     os.system("chcp 65001")  # PyCharm Terminal UTF-8 깨짐 방지
     os.chdir(adb_folder)
     os.system("adb devices")
-    remove_list = open(f"{abs_path}/remove_list.txt", 'r')  # 62번 list 변환 후 공백 처리 되는 오류 보완
+
+    remove_list = open(f"{abs_path}/remove_list.txt", 'r')
+    remove_list_len = len(remove_list.readlines())
+    remove_list.close()
+
+    remove_list = open(f"{abs_path}/remove_list.txt", 'r')  # list 변환 후 공백 처리 되는 오류 보완 + 마지막 줄 리드 방지
+
     for package_name in remove_list:
+        i += 1
         package_name = package_name.strip('\n')
         package_name = package_name.replace("package:", '')
         remove_result = os.popen(f"adb shell pm uninstall --user 0 {package_name}").read()
@@ -151,9 +163,14 @@ def ADBRun():
             MessageLog(f"[성공] {package_name}(이)가 디바이스에서 제거되었습니다.\n")
         else:
             MessageLog(f"[실패] {package_name}(이)가 디바이스에서 제거되지 않았습니다. - {remove_result}")
+        progress_value.set(int(i / remove_list_len * 100))
+        progress_bar.update()
+
     else:
         MessageLog(f"[정보] 작업이 완료되었습니다.\n")
         MessageBox("작업 완료", "작업이 완료되었습니다.\n자세한 내용은 로그를 참고해 주세요.")
+        progress_value.set(0)
+        progress_bar.update()
 
     os.system('taskkill /f /im adb.exe')  # adb server-process 충돌 방지
     remove_list.close()
@@ -162,7 +179,14 @@ def ADBRun():
     return os.system('log.txt')
 
 
-# Preset ====================================================================================================
+# Thread ==============================================================================================================
+def ADBRunThread():  # Menu 접근 가능
+    th = threading.Thread(target=ADBRun)
+    #th.setDaemon(True)
+    th.start()
+
+
+# Preset ==============================================================================================================
 def PresetSave():
     return 0
 
@@ -172,7 +196,7 @@ def PresetRead():
 
 
 def PresetT800():
-    warning_msg = MessageBox("덮어쓰기 경고", "기존 프리셋을 덮어씁니다. 계속하시겠습니까?", "askyesno")
+    warning_msg = MessageBox("덮어쓰기 경고", "기존 제거 목록을 덮어씁니다. 계속하시겠습니까?", "askyesno")
 
     if warning_msg == 1:
         remove_list = open(f"{abs_path}/remove_list.txt", 'w')
@@ -183,11 +207,11 @@ def PresetT800():
         remove_list.close()
         new_remove_list.close()
 
-        MessageLog("[정보] 기존 프리셋에서 새로운 프리셋으로 변경되었습니다.\n")
+        MessageLog("[정보] 기존 제거 목록에서 새로운 프리셋으로 변경되었습니다.\n")
         return MessageBox("덮어쓰기 완료", "기존 프리셋에서 새로운 프리셋으로 변경되었습니다.")
 
 
-# Menu Core ====================================================================================================
+# Menu - Function =====================================================================================================
 def OPENRemovelist():
     return os.system('remove_list.txt')
 
@@ -199,17 +223,17 @@ def OPENLog():
     log = open(f'{abs_path}/log.txt', 'a')
 
 
-# GUI - Base ====================================================================================================
+# GUI - Core ==========================================================================================================
 window = tkinter.Tk()
-window_x = 500
-window_y = 250
+window_x = 450
+window_y = 200
 
 window.title("rmAppAuto - GUI Version")
 window.geometry(f"{window_x}x{window_y}+{int((1920 - window_x) / 2)}+{int((1080 - window_y) / 2)}")
 window.resizable(False, False)
 window.wm_iconphoto(False, PhotoImage(file="icon.png"))
 
-# GUI - Menu ====================================================================================================
+# Menu - Core =========================================================================================================
 menu = tkinter.Menu(window)
 
 menu_set = tkinter.Menu(menu, tearoff=0)
@@ -240,11 +264,18 @@ menu.add_cascade(label="디버그", menu=menu_debug)
 window.config(menu=menu)
 
 # GUI - Display ====================================================================================================
-button = tkinter.Button(window, text="시작", overrelief="solid", width=10, height=5, command=ADBRun)
-progressbar = tkinter.ttk.Progressbar(window, maximum=100, length=200)
-progressbar.grid(row=0, column=0)
-button.grid(row=0, column=1)
+progress_value = DoubleVar()
 
+label_progress = tkinter.LabelFrame(window, text="작업 진행도")
+progress_bar = tkinter.ttk.Progressbar(label_progress, maximum=100, length=window_x, variable=progress_value)
+
+button_start = tkinter.Button(window, text="시작", overrelief="solid", width=10, height=2, command=ADBRun)
+button_quit = tkinter.Button(window, text="종료", overrelief="solid", width=10, height=2, command=quit)
+
+label_progress.pack(side="top", padx=10, pady=25)
+progress_bar.pack(side="top", fill="x", padx=10, pady=10)
+
+button_start.pack(side="left", anchor="center", padx=75)
+button_quit.pack(side="right", anchor="center", padx=75)
 # Start ====================================================================================================
-MessageBox("작업 알림", "작업 도중 '응답 없음'은 정상적입니다.\n강제로 케이블 연결을 제거하거나, 프로그램을 종료하지 마세요.")
 window.mainloop()
