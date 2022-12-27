@@ -1,7 +1,7 @@
 /.idea
 /platform-tools
-/sample
-/release
-/dist
+/preset
 /icon
+/dist
+/release
 *.spec
