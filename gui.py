@@ -6,8 +6,11 @@ import zipfile
 import tkinter
 import tkinter.ttk
 import tkinter.messagebox
+import tkinter.font
 import threading
+import webbrowser
 from tkinter import *
+from tkinter import filedialog
 from datetime import datetime
 
 abs_path = os.path.dirname(os.path.abspath(__file__))  # 절대 경로
@@ -16,7 +19,7 @@ adb_folder = os.path.dirname(os.path.abspath(__file__)) + "/platform-tools"  # �
 log = open(f'{abs_path}/log.txt', 'a')  # 릴리즈 버전에 포함 시키지 않음
 
 
-# Alert Message =======================================================================================================
+# Form ================================================================================================================
 def MessageLog(description):
     now = datetime.now()
     return log.write(f"{now.strftime('%Y-%m-%d %H:%M:%S')} : {description}")
@@ -31,6 +34,13 @@ def MessageBox(title, description, type="info"):
         return tkinter.messagebox.askyesno(title, description)
     else:
         return tkinter.messagebox.showinfo(title, description)
+
+
+def ProgressUpdate(percent):
+    global progress_value
+    global progress_bar
+    progress_value.set(percent)
+    progress_bar.update()
 
 
 # Function - Core =====================================================================================================
@@ -105,9 +115,9 @@ def ADBListChecker(mode="message"):  # mode 1 -> ADBRun
 
 
 def ADBListReader():
-    read_list = open(f"{abs_path}/readed_list.txt", 'w')  # 62번 list 변환 후 공백 처리 되는 오류 보완
+    read_list = open(f"{abs_path}/readed_list.txt", 'w')  # list 변환 후 공백 처리 되는 오류 보완
 
-    if ADBAuthChecker("TF") == 0:
+    if ADBFileChecker("TF") + ADBAuthChecker("TF") == 0:
         os.system("chcp 65001")  # PyCharm Terminal UTF-8 깨짐 방지
         os.chdir(adb_folder)
         os.system("adb devices")
@@ -122,14 +132,11 @@ def ADBListReader():
         return os.system(f"{abs_path}/readed_list.txt")
     else:
         MessageLog("[오류] 디바이스 내 설치된 앱 정보를 불러오지 못했습니다.\n")
-        MessageBox("불러오기 실패", "디바이스 내 설치된 앱 정보를 불러오지 못했습니다.", "error")
+        MessageBox("불러오기 실패", "디바이스 내 설치된 앱 정보를 불러오지 못했습니다.\n필수 요소 및 디바이스 연결 상태를 확인해 주세요.", "error")
 
 
 def ADBRun():
     global log  # 로그 열기 (지역 변수화)로 인한 글로벌 처리
-    global progress_value
-    global progress_bar
-
     i = 0
 
     if not os.path.isfile(abs_path + "/remove_list.txt"):
@@ -137,145 +144,194 @@ def ADBRun():
         rm_list.close()
     warning_msg = MessageBox("작업 경고", "시스템 앱을 삭제할 경우, 치명적인 문제가 발생할 수 있습니다.\n계속하시겠습니까?", "askyesno")
 
-    if warning_msg == 0:
-        MessageLog("[정보] 사용자가 작업을 중단하였습니다.\n")
-        return MessageBox("작업 중단", "작업이 중단되었습니다.")
+    if warning_msg == 1:
+        if ADBFileChecker("TF") + ADBAuthChecker("TF") + ADBListChecker("TF") > 0:
+            return MessageBox("작업 오류", "작업 초기화 작업 중 오류로 인해 작업을 중단했습니다.\n자세한 내용은 로그를 참고해 주세요.", "error")
 
-    if ADBFileChecker("TF") + ADBAuthChecker("TF") + ADBListChecker("TF") > 0:
-        return MessageBox("작업 오류", "작업 초기화 작업 중 오류로 인해 작업을 중단했습니다.\n자세한 내용은 로그를 참고해 주세요.", "error")
+        os.system("chcp 65001")  # PyCharm Terminal UTF-8 깨짐 방지
+        os.chdir(adb_folder)
+        os.system("adb devices")
 
-    os.system("chcp 65001")  # PyCharm Terminal UTF-8 깨짐 방지
-    os.chdir(adb_folder)
-    os.system("adb devices")
+        remove_list = open(f"{abs_path}/remove_list.txt", 'r')
+        remove_list_len = len(remove_list.readlines())
+        remove_list.close()
 
-    remove_list = open(f"{abs_path}/remove_list.txt", 'r')
-    remove_list_len = len(remove_list.readlines())
-    remove_list.close()
+        remove_list = open(f"{abs_path}/remove_list.txt", 'r')  # list 변환 후 공백 처리 되는 오류 보완 + 마지막 줄 리드 방지
 
-    remove_list = open(f"{abs_path}/remove_list.txt", 'r')  # list 변환 후 공백 처리 되는 오류 보완 + 마지막 줄 리드 방지
+        for package_name in remove_list:
+            i += 1
+            package_name = package_name.strip('\n')
+            package_name = package_name.replace("package:", '')
+            remove_result = os.popen(f"adb shell pm uninstall --user 0 {package_name}").read()
+            if "Success" in remove_result:
+                MessageLog(f"[성공] {package_name}(이)가 디바이스에서 제거되었습니다.\n")
+            else:
+                MessageLog(f"[실패] {package_name}(이)가 디바이스에서 제거되지 않았습니다. - {remove_result}")
+            ProgressUpdate(int(i / remove_list_len * 100))
 
-    for package_name in remove_list:
-        i += 1
-        package_name = package_name.strip('\n')
-        package_name = package_name.replace("package:", '')
-        remove_result = os.popen(f"adb shell pm uninstall --user 0 {package_name}").read()
-        if "Success" in remove_result:
-            MessageLog(f"[성공] {package_name}(이)가 디바이스에서 제거되었습니다.\n")
         else:
-            MessageLog(f"[실패] {package_name}(이)가 디바이스에서 제거되지 않았습니다. - {remove_result}")
-        progress_value.set(int(i / remove_list_len * 100))
-        progress_bar.update()
+            MessageLog(f"[정보] 작업이 완료되었습니다.\n")
+            MessageBox("작업 완료", "작업이 완료되었습니다.\n자세한 내용은 로그를 참고해 주세요.")
+            ProgressUpdate(0)
 
-    else:
-        MessageLog(f"[정보] 작업이 완료되었습니다.\n")
-        MessageBox("작업 완료", "작업이 완료되었습니다.\n자세한 내용은 로그를 참고해 주세요.")
-        progress_value.set(0)
-        progress_bar.update()
-
-    os.system('taskkill /f /im adb.exe')  # adb server-process 충돌 방지
-    remove_list.close()
-    log.close()
-    os.chdir(abs_path)
-    return os.system('log.txt')
-
-
-# Thread ==============================================================================================================
-def ADBRunThread():  # Menu 접근 가능
-    th = threading.Thread(target=ADBRun)
-    #th.setDaemon(True)
-    th.start()
+        os.system('taskkill /f /im adb.exe')  # adb server-process 충돌 방지
+        remove_list.close()
+        log.close()
+        os.chdir(abs_path)
+        return os.system('log.txt')
 
 
 # Preset ==============================================================================================================
 def PresetSave():
-    return 0
+    new_remove_list = filedialog.asksaveasfilename(title="프리셋 내보내기", filetypes=[("텍스트 파일", ".txt")],
+                                                   initialfile=f"Preset_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt")
 
+    if new_remove_list != '':
+        remove_list = open(f"{abs_path}/remove_list.txt", 'r')
+        new_remove_list = open(new_remove_list, 'w')
 
-def PresetRead():
-    return 0
-
-
-def PresetT800():
-    warning_msg = MessageBox("덮어쓰기 경고", "기존 제거 목록을 덮어씁니다. 계속하시겠습니까?", "askyesno")
-
-    if warning_msg == 1:
-        remove_list = open(f"{abs_path}/remove_list.txt", 'w')
-        new_remove_list = open(f"{abs_path}/preset/Marshmello.txt", 'r')
-
-        for remove_app in new_remove_list:
-            remove_list.write(f"{remove_app}")
+        for remove_app in remove_list:
+            new_remove_list.write(f"{remove_app}")
         remove_list.close()
         new_remove_list.close()
 
-        MessageLog("[정보] 기존 제거 목록에서 새로운 프리셋으로 변경되었습니다.\n")
-        return MessageBox("덮어쓰기 완료", "기존 프리셋에서 새로운 프리셋으로 변경되었습니다.")
+        MessageLog("[정보] 프리셋이 저장되었습니다.\n")
+        return MessageBox("내보내기 완료", "프리셋이 저장되었습니다.")
+
+
+def PresetRead():
+    new_remove_list = filedialog.askopenfilename(title="프리셋 가져오기", filetypes=[("텍스트 파일", ".txt")],
+                                                 initialdir=abs_path)
+    if new_remove_list != '':
+        warning_msg = MessageBox("가져오기 경고", "기존 제거 목록에 선택한 프리셋으로 덮어씁니다.\n계속하시겠습니까?", "askyesno")
+
+        if warning_msg == 1:
+            remove_list = open(f"{abs_path}/remove_list.txt", 'w')
+            new_remove_list = open(new_remove_list, 'r')
+
+            for remove_app in new_remove_list:
+                remove_list.write(f"{remove_app}")
+            remove_list.close()
+            new_remove_list.close()
+
+            MessageLog("[정보] 기존 제거 목록에서 새로운 프리셋으로 변경되었습니다.\n")
+            return MessageBox("가져오기 완료", "기존 제거 목록에서 새로운 프리셋으로 변경되었습니다.")
 
 
 # Menu - Function =====================================================================================================
-def OPENRemovelist():
-    return os.system('remove_list.txt')
+def OpenRemovelist():
+    return os.system(f"{abs_path}/remove_list.txt")
 
 
-def OPENLog():
+def OpenLog():
     global log  # 로그 열기 (지역 변수화)로 인한 글로벌 처리
     log.close()
-    os.system('log.txt')
-    log = open(f'{abs_path}/log.txt', 'a')
+    os.system(f"{abs_path}/log.txt")
+    log = open(f"{abs_path}/log.txt", 'a')
+
+
+def OpenURL():
+    return webbrowser.open("https://github.com/HanSatCode/rmAppAuto")
+
+
+# Thread ==============================================================================================================
+def OpenRemovelistThread():
+    th = threading.Thread(target=OpenRemovelist)
+    # th.setDaemon(True)
+    th.start()
+
+
+def OpenLogThread():
+    th = threading.Thread(target=OpenLog)
+    # th.setDaemon(True)
+    th.start()
+
+
+def ADBListReaderThread():
+    th = threading.Thread(target=ADBListReader)
+    # th.setDaemon(True)
+    th.start()
 
 
 # GUI - Core ==========================================================================================================
 window = tkinter.Tk()
 window_x = 450
-window_y = 200
+window_y = 325
 
-window.title("rmAppAuto - GUI Version")
+window.title("rmAppAuto")
 window.geometry(f"{window_x}x{window_y}+{int((1920 - window_x) / 2)}+{int((1080 - window_y) / 2)}")
 window.resizable(False, False)
 window.wm_iconphoto(False, PhotoImage(file="icon.png"))
+window.configure(bg="#ffffff")
 
-# Menu - Core =========================================================================================================
-menu = tkinter.Menu(window)
+# GUI - Font ===
+font7 = tkinter.font.Font(family="나눔고딕OTF", size=7)
+font12 = tkinter.font.Font(family="나눔고딕OTF", size=12)
+font12Bold = tkinter.font.Font(family="나눔고딕OTF", size=12, weight="bold")
 
-menu_set = tkinter.Menu(menu, tearoff=0)
-menu_debug = tkinter.Menu(menu, tearoff=0)
-menu_preset = tkinter.Menu(menu, tearoff=0)
-
-menu_set.add_command(label="제거 목록 열기", command=OPENRemovelist)
-menu_set.add_command(label="디바이스 설치 목록 확인", command=ADBListReader)
-menu_set.add_separator()
-menu_set.add_command(label="필수 요소 확인", command=ADBFileChecker)
-menu_set.add_command(label="디바이스 연결 확인", command=ADBAuthChecker)
-menu_set.add_separator()
-menu_set.add_command(label="필수 요소 재설치", command=ADBFileDownloader)
-menu_set.add_separator()
-menu_set.add_command(label="종료", command=exit)
-
-menu_preset.add_command(label="프리셋 내보내기", command=PresetSave, state="disabled")
-menu_preset.add_command(label="프리셋 가져오기", command=PresetRead, state="disabled")
-menu_preset.add_separator()
-menu_preset.add_command(label="Marshmello 6.0", command=PresetT800)
-
-menu_debug.add_command(label="로그 열기", command=OPENLog)
-
-menu.add_cascade(label="옵션", menu=menu_set)
-menu.add_cascade(label="프리셋", menu=menu_preset)
-menu.add_cascade(label="디버그", menu=menu_debug)
-
-window.config(menu=menu)
-
-# GUI - Display ====================================================================================================
+# GUI - Display ======================================================================================================
 progress_value = DoubleVar()
 
-label_progress = tkinter.LabelFrame(window, text="작업 진행도")
+label_list = tkinter.LabelFrame(window, text=" 리스트 ", bd=1, relief="solid", bg="#ffffff", fg="#313131", font=font12Bold)
+button_remove = tkinter.Button(label_list, text="제거 목록 목록 확인", overrelief="solid", width=18, height=2,
+                               command=OpenRemovelistThread, bd=0, bg="#ffffff", fg="#313131",
+                               activebackground="#294dff",
+                               activeforeground="#ffffff", font=font12)
+button_device = tkinter.Button(label_list, text="디바이스 설치 목록 확인", overrelief="solid", width=18, height=2,
+                               command=ADBListReaderThread, bd=0, bg="#ffffff", fg="#313131",
+                               activebackground="#294dff",
+                               activeforeground="#ffffff", font=font12)
+
+label_preset = tkinter.LabelFrame(window, text=" 프리셋 ", bd=1, relief="solid", bg="#ffffff", fg="#313131",
+                                  font=font12Bold)
+button_save = tkinter.Button(label_preset, text="가져오기", overrelief="solid", width=7, height=1, command=PresetRead,
+                             bd=0, bg="#ffffff", fg="#313131", activebackground="#294dff", activeforeground="#ffffff",
+                             font=font12)
+button_read = tkinter.Button(label_preset, text="내보내기", relief="solid", overrelief="solid", width=7, height=1,
+                             command=PresetSave, bd=0, bg="#ffffff", fg="#313131", activebackground="#294dff",
+                             activeforeground="#ffffff", font=font12)
+
+label_progress = tkinter.LabelFrame(window, text=" 작업 진행도 ", bd=1, relief="solid", bg="#ffffff", fg="#313131",
+                                    font=font12Bold)
 progress_bar = tkinter.ttk.Progressbar(label_progress, maximum=100, length=window_x, variable=progress_value)
 
-button_start = tkinter.Button(window, text="시작", overrelief="solid", width=10, height=2, command=ADBRun)
-button_quit = tkinter.Button(window, text="종료", overrelief="solid", width=10, height=2, command=quit)
+label_debug = tkinter.LabelFrame(window, text=" 디버그 ", bd=1, relief="solid", bg="#ffffff", fg="#313131",
+                                 font=font12Bold)
+button_debug = tkinter.Button(label_debug, text="재설치", overrelief="solid", width=8, height=1,
+                              command=ADBFileDownloader,
+                              bd=0, bg="#ffffff", fg="#313131", activebackground="#294dff", activeforeground="#ffffff",
+                              font=font12)
+button_log = tkinter.Button(label_debug, text=" 로그 ", overrelief="solid", width=8, height=1, command=OpenLogThread,
+                            bd=0,
+                            bg="#ffffff", fg="#313131", activebackground="#294dff", activeforeground="#ffffff",
+                            font=font12)
 
-label_progress.pack(side="top", padx=10, pady=25)
-progress_bar.pack(side="top", fill="x", padx=10, pady=10)
+button_start = tkinter.Button(window, text="시작", overrelief="solid", width=10, height=2, command=ADBRun, bd=0,
+                              bg="#ffffff", fg="#313131", activebackground="#294dff", activeforeground="#ffffff",
+                              font=font12Bold)
 
-button_start.pack(side="left", anchor="center", padx=75)
-button_quit.pack(side="right", anchor="center", padx=75)
+label_url = tkinter.Button(window, text="https://github.com/HanSatCode/rmAppAuto", width=50, command=OpenURL,
+                           anchor="e", bd=0, bg="#ffffff", fg="#313131", activebackground="#ffffff",
+                           activeforeground="#294dff", font=font7)
+
+# GUI - Layout ======================================================================================================
+label_url.pack(side="bottom", anchor='e', padx=5, pady=5)
+button_start.pack(side="bottom", anchor='s', pady=10)
+
+label_progress.pack(side="bottom", anchor='n', padx=10)
+progress_bar.pack(side="top", anchor="center", fill='x', padx=10, pady=10)
+
+label_list.pack(side="left", anchor="nw", padx=10, pady=10, fill='y')
+button_remove.pack(side="top", anchor='n', padx=10, pady=10)
+button_device.pack(side="bottom", anchor='s', padx=10, pady=10)
+
+label_preset.pack(side="top", anchor='n', padx=10, pady=10, fill='x')
+button_save.pack(side="left", anchor='w', padx=10, pady=10)
+button_read.pack(side="right", anchor='e', padx=10, pady=10)
+
+label_debug.pack(side="right", anchor='s', padx=10, pady=10, fill='x')
+button_debug.pack(side="left", anchor='s', padx=10, pady=10)
+button_log.pack(side="right", anchor='s', padx=10, pady=10)
+
 # Start ====================================================================================================
 window.mainloop()
