@@ -273,7 +273,7 @@ font12Bold = tkinter.font.Font(family="나눔고딕OTF", size=12, weight="bold")
 progress_value = DoubleVar()
 
 label_list = tkinter.LabelFrame(window, text=" 리스트 ", bd=1, relief="solid", bg="#ffffff", fg="#313131", font=font12Bold)
-button_remove = tkinter.Button(label_list, text="제거 목록 목록 확인", overrelief="solid", width=18, height=2,
+button_remove = tkinter.Button(label_list, text="제거 목록 확인", overrelief="solid", width=18, height=2,
                                command=OpenRemovelistThread, bd=0, bg="#ffffff", fg="#313131",
                                activebackground="#294dff",
                                activeforeground="#ffffff", font=font12)
